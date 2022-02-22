@@ -17,6 +17,16 @@ object UserSegment {
 
     val temp_date = "2021-12-10"
 
+
+    // Create schemas
+    val tranTypeSchema = new StructType()
+      .add("trantype", IntegerType, nullable = true)
+      .add("transtypename", StringType, nullable = true)
+
+    val genderSchema = new StructType()
+      .add("gender", IntegerType, nullable = true)
+      .add("genderName", StringType, nullable = true)
+
     val userSchema = new StructType()
       .add("customer_id", IntegerType, nullable = true)
       .add("birthdate", DateType, nullable = true)
@@ -41,6 +51,17 @@ object UserSegment {
       .add("amount", IntegerType, nullable = true)
       .add("pmcId", IntegerType, nullable = true)
 
+    // Read data from sources
+    val trantypeDF = spark.read
+      .option("header", "true").option("delimiter", "\t")
+      .schema(tranTypeSchema)
+      .csv("data/source/mapping/transtype.csv")
+
+    val genderDF = spark.read
+      .option("header", "true").option("delimiter", "\t")
+      .schema(genderSchema)
+      .csv("data/source/mapping/gender.csv")
+
     val userDF = spark.read
       .option("header", "true").option("delimiter", "\t")
       .schema(userSchema)
@@ -56,12 +77,23 @@ object UserSegment {
       .schema(transactionSchema)
       .csv("data/source/transactions/" + temp_date)
 
+    // Write data to datalake
     userDF.write.mode(SaveMode.Overwrite).parquet("data/datalake/users/" + temp_date)
     promotionDF.write.mode(SaveMode.Overwrite).parquet("data/datalake/promotions/" + temp_date)
     transactionDF.write.mode(SaveMode.Overwrite).parquet("data/datalake/transactions/" + temp_date)
 
+    // Transform data
     val userWithAgeDF = userDF.withColumn("age", year(lit(temp_date)) - year(col("birthdate")))
       .drop("birthdate")
+    val userWithGenderName = userWithAgeDF.as("user").join(broadcast(genderDF.as("gender")),
+      col("user.gender") === col("gender.gender")).drop("gender")
+      .withColumnRenamed("genderName","gender")
+
+    // Filter successful transactions
+    val successTransDF = transactionDF.filter(col("transStatus")===1)
+    val transWithTypeNameDF = successTransDF.as("trans").join(broadcast(trantypeDF.as("type")),
+      col("trans.transType")===col("type.trantype")).drop("trantype").show()
+
 
   }
 }

@@ -1,8 +1,11 @@
+import com.mongodb.spark.MongoSpark
+import com.mongodb.spark.config.{ReadConfig, WriteConfig}
 import org.apache.log4j._
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.expressions.Window
+import org.bson.Document
 
 object UserSegment {
   def main(args: Array[String]) {
@@ -16,8 +19,27 @@ object UserSegment {
       .master("local[*]")
       .getOrCreate()
 
+    import spark.implicits._
+
     val temp_date = "2021-11-02"
 
+    val output_uri_test = "mongodb://localhost:27017/"
+
+    def getDFfromMongo(df: DataFrame, colname: String, collection: String): DataFrame = {
+      val readConfig = ReadConfig(Map("uri" -> output_uri_test, "database" -> "FAcademy", "collection" -> collection))
+      val text = df.select(col(colname)).agg(concat_ws(",", collect_list(col(colname)))).first().get(0)
+      val pipeline = "{$match: { _id: {$in:[" + text + "]}}}"
+      val rdd = MongoSpark.load(spark.sparkContext, readConfig)
+      val result = rdd.withPipeline(Seq(Document.parse(pipeline)))
+        .toDF()
+      return result
+    }
+
+    def writeDFtoMongo(df: DataFrame, primcol: String, collect: String) = {
+      val writeConfig = WriteConfig(Map("uri" -> output_uri_test, "database" -> "FAcademy", "collection" -> collect, "replaceDocument" -> "false"))
+      val df_save = df.withColumnRenamed(primcol, "_id")
+      MongoSpark.save(df_save, writeConfig)
+    }
 
     // Create schemas
     val tranTypeSchema = new StructType()
@@ -29,7 +51,7 @@ object UserSegment {
       .add("genderName", StringType, nullable = true)
 
     val userSchema = new StructType()
-      .add("customer_id", IntegerType, nullable = true)
+      .add("userId", IntegerType, nullable = true)
       .add("birthdate", DateType, nullable = true)
       .add("profileLevel", IntegerType, nullable = true)
       .add("gender", IntegerType, nullable = true)
@@ -51,6 +73,12 @@ object UserSegment {
       .add("transType", IntegerType, nullable = true)
       .add("amount", IntegerType, nullable = true)
       .add("pmcId", IntegerType, nullable = true)
+
+    val campaignSchema = new StructType()
+      .add("campaignID", IntegerType, nullable = true)
+      .add("campaignType", IntegerType, nullable = true)
+      .add("expireDate", TimestampType, nullable = true)
+      .add("expireTime", IntegerType, nullable = true)
 
     // Read data from sources
     val trantypeDF = spark.read
@@ -78,17 +106,28 @@ object UserSegment {
       .schema(transactionSchema)
       .csv("data/source/transactions/" + temp_date)
 
+    val campaignDF = spark.read
+      .option("header", "true").option("delimiter", "\t")
+      .schema(campaignSchema)
+      .csv("data/source/configs/campaign.csv")
+
     // Write data to datalake
     userDF.write.mode(SaveMode.Overwrite).parquet("data/datalake/users/" + temp_date)
     promotionDF.write.mode(SaveMode.Overwrite).parquet("data/datalake/promotions/" + temp_date)
     transactionDF.write.mode(SaveMode.Overwrite).parquet("data/datalake/transactions/" + temp_date)
 
     // TRANSFORM DATA
-    val userWithAgeDF = userDF.withColumn("age", year(lit(temp_date)) - year(col("birthdate")))
+    // Get last updated demographic infomation of the day
+    val userWindowSpec = Window.partitionBy("userId").orderBy(col("updatedTime").desc)
+    val userFinalDF = userDF.withColumn("Rank", row_number().over(userWindowSpec))
+      .filter($"Rank" === 1).drop($"Rank")
+
+    val userWithAgeDF = userFinalDF.withColumn("age", year(lit(temp_date)) - year(col("birthdate")))
       .drop("birthdate")
-    val userWithGenderName = userWithAgeDF.as("user").join(broadcast(genderDF.as("gender")),
+    val dayUserResult = userWithAgeDF.as("user").join(broadcast(genderDF.as("gender")),
       col("user.gender") === col("gender.gender")).drop("gender")
       .withColumnRenamed("genderName", "gender")
+      .cache()
 
     // Filter successful transactions
     val successTransDF = transactionDF.filter(col("transStatus") === 1)
@@ -125,14 +164,33 @@ object UserSegment {
       col("active.userId") === col("last.userId"))
       .drop(col("last.userId"))
 
-    val dayResultDF = lastTranJoint.as("last").join(appPmcIdsDF.as("appPmc"),
+    val dayTransResultDF = lastTranJoint.as("last").join(appPmcIdsDF.as("appPmc"),
       col("last.userId") === col("appPmc.userId"))
       .drop(col("appPmc.userId"))
+      .cache()
 
-    dayResultDF.orderBy(size(col("appIds")).desc,size(col("pmcIds")).desc).show()
+    //    dayTransResultDF.orderBy(size(col("appIds")).desc,size(col("pmcIds")).desc).show()
 
-    //    println(userActiveDF.count())
-    //    println(userActivePaymentDF.count())
+    //  Get promotions data
+    val promotionInfo = promotionDF.as("promotion").join(broadcast(campaignDF.as("camp")),
+      col("promotion.campaignID") === col("camp.campaignID")).drop(col("camp.campaignID"))
+
+
+    val promotionValidDate = promotionInfo.withColumn("ValidDate", when($"status" === "USED", $"time")
+      .when($"campaignType" === 1, $"expireDate")
+      .when(($"expireDate".cast("long") - $"time".cast("long")) < $"expireTime", $"expireDate")
+      .otherwise(($"time".cast("long") + $"expireTime").cast("timestamp")))
+      .drop($"expireDate").drop($"expireTime").drop($"campaignType")
+
+    val PWindowSpec = Window.partitionBy("voucherCode").orderBy(col("time").desc)
+
+    // window filter to avoid user received and use the voucher in the same day.
+    val dayPromotionResult = promotionValidDate.withColumn("Rank", row_number().over(PWindowSpec))
+      .filter($"Rank" === 1).drop($"Rank").drop($"time")
+
+    //    println(getDFfromMongo(dayUserResult, "userId", "demographic").count())
+    //    writeDFtoMongo(dayUserResult, "userId", "demographic")
+
 
   }
 }

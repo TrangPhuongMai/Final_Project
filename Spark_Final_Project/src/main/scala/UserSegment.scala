@@ -110,7 +110,6 @@ object UserSegment {
       .drop(col("appPmc.userId"))
       .cache()
 
-    //    dayActivityResultDF.orderBy(size(col("appIds")).desc,size(col("pmcIds")).desc).show()
 
     //  Get promotions data
     val promotionInfo = promotionDF.as("promotion").join(broadcast(campaignDF.as("camp")),
@@ -128,6 +127,7 @@ object UserSegment {
     // window filter to avoid user received and use the voucher in the same day.
     val dayPromotionResult = promotionValidDate.withColumn("Rank", row_number().over(PWindowSpec))
       .filter($"Rank" === 1).drop($"Rank").drop($"time")
+      .cache()
 
 
     // INSERT DATA TO DATABASE

@@ -25,13 +25,20 @@ object UserSegment {
 
     val output_uri_test = "mongodb://localhost:27017/"
 
-    def getDFfromMongo(df: DataFrame, colname: String, collection: String): DataFrame = {
+    def getDFfromMongo(df: DataFrame, colname: String, collection: String, schema: StructType, isStringType: Boolean = true): DataFrame = {
       val readConfig = ReadConfig(Map("uri" -> output_uri_test, "database" -> "FAcademy", "collection" -> collection))
-      val text = df.select(col(colname)).agg(concat_ws(",", collect_list(col(colname)))).first().get(0)
-      val pipeline = "{$match: { _id: {$in:[" + text + "]}}}"
+      val pipeline: String = if (isStringType) {
+        val text = df.select(col(colname)).agg(concat_ws("""","""", collect_list(col(colname)))).first().get(0)
+        "{$match: { _id : {$in:[\"" + text + "\"]}}}"
+      }
+      else {
+        val text = df.select(col(colname)).agg(concat_ws(",", collect_list(col(colname)))).first().get(0)
+
+        "{$match: { _id : {$in:[" + text + "]}}}"
+      }
+
       val rdd = MongoSpark.load(spark.sparkContext, readConfig)
-      val result = rdd.withPipeline(Seq(Document.parse(pipeline)))
-        .toDF()
+      val result = rdd.withPipeline(Seq(Document.parse(pipeline))).toDF(schema)
       return result
     }
 
@@ -79,6 +86,32 @@ object UserSegment {
       .add("campaignType", IntegerType, nullable = true)
       .add("expireDate", TimestampType, nullable = true)
       .add("expireTime", IntegerType, nullable = true)
+
+    val dbActivitySchema = new StructType()
+      .add("_id", IntegerType, nullable = true)
+      .add("FirstActiveDate", DateType, nullable = true)
+      .add("FirstPayDate", DateType, nullable = true)
+      .add("LastActiveDate", DateType, nullable = true)
+      .add("LastPayDate", DateType, nullable = true)
+      .add("lastActiveTransactionType", IntegerType, nullable = true)
+      .add("lastPayAppId", IntegerType, nullable = true)
+      .add("pmcIds", ArrayType(IntegerType), nullable = true)
+      .add("appIds", ArrayType(IntegerType), nullable = true)
+
+    val dbDemographicSchema = new StructType()
+      .add("_id", IntegerType, nullable = true)
+      .add("age", IntegerType, nullable = true)
+      .add("profileLevel", IntegerType, nullable = true)
+      .add("gender", StringType, nullable = true)
+      .add("updatedTime", TimestampType, nullable = true)
+
+    val db_promo_schema = new StructType()
+      .add("_id", StringType, nullable = true)
+      .add("ValidDate", TimestampType, nullable = true)
+      .add("campaignID", IntegerType, nullable = true)
+      .add("customer_id", IntegerType, nullable = true)
+      .add("status", StringType, nullable = true)
+
 
     // Read data from sources
     val trantypeDF = spark.read
@@ -164,12 +197,12 @@ object UserSegment {
       col("active.userId") === col("last.userId"))
       .drop(col("last.userId"))
 
-    val dayTransResultDF = lastTranJoint.as("last").join(appPmcIdsDF.as("appPmc"),
+    val dayActivityResultDF = lastTranJoint.as("last").join(appPmcIdsDF.as("appPmc"),
       col("last.userId") === col("appPmc.userId"))
       .drop(col("appPmc.userId"))
       .cache()
 
-    //    dayTransResultDF.orderBy(size(col("appIds")).desc,size(col("pmcIds")).desc).show()
+    //    dayActivityResultDF.orderBy(size(col("appIds")).desc,size(col("pmcIds")).desc).show()
 
     //  Get promotions data
     val promotionInfo = promotionDF.as("promotion").join(broadcast(campaignDF.as("camp")),
@@ -188,9 +221,81 @@ object UserSegment {
     val dayPromotionResult = promotionValidDate.withColumn("Rank", row_number().over(PWindowSpec))
       .filter($"Rank" === 1).drop($"Rank").drop($"time")
 
-    //    println(getDFfromMongo(dayUserResult, "userId", "demographic").count())
-    //    writeDFtoMongo(dayUserResult, "userId", "demographic")
+
+    // INSERT DATA TO DATABASE
+
+    // Insert into demographic table
+    val inputDemographicDF = dayUserResult.as("day").join(
+      getDFfromMongo(dayUserResult, "userId", "Demographic", dbDemographicSchema)
+        .select("_id", "updatedTime")
+        .as("db"),
+      $"day.userId" === $"db._id", "left")
+      .withColumn("input", when($"db.updatedTime".isNull, 1)
+        .when($"db.updatedTime" < $"day.updatedTime", 1).otherwise(0))
+      .filter($"input" === 1)
+      .drop($"db.updatedTime").drop($"_id").drop("input")
+
+    writeDFtoMongo(inputDemographicDF, "userId", "Demographic")
+
+    //Insert into activity table
+    val firstActiveCondition = when($"db.dbFirstActiveDate".isNull, $"day.FirstActiveDate")
+      .when($"db.dbFirstActiveDate" > $"day.FirstActiveDate", $"day.FirstActiveDate")
+      .otherwise($"db.dbFirstActiveDate")
+    val lastActiveCondition = when($"db.dbLastActiveDate".isNull, $"day.LastActiveDate")
+      .when($"db.dbLastActiveDate" < $"day.LastActiveDate", $"day.LastActiveDate")
+      .otherwise($"db.dbLastActiveDate")
+    val firstPayDateCondition = when($"db.dbFirstPayDate".isNull or $"day.FirstPayDate".isNull, $"day.FirstPayDate")
+      .when($"db.dbFirstPayDate" > $"day.FirstPayDate", $"day.FirstPayDate")
+      .otherwise($"db.dbFirstPayDate")
+    val lastPayDateCondition = when($"db.dbLastPayDate".isNull or $"day.LastPayDate".isNull, $"day.LastPayDate")
+      .when($"db.dbLastPayDate" < $"day.LastPayDate", $"day.LastPayDate")
+      .otherwise($"db.dbLastPayDate")
+    // Prioritize day last pay
+    val lastPayAppIdCondition = when($"db.dbLastActiveDate".isNull or $"day.LastActiveDate".isNull, $"day.lastPayAppId")
+      .when($"db.dbLastActiveDate" > $"day.LastActiveDate", $"db.dblastPayAppId")
+      .otherwise($"day.lastPayAppId")
+    val lastActiveTransactionTypeCondition = when($"db.dbLastActiveDate".isNull or $"day.LastActiveDate".isNull, $"day.lastActiveTransactionType")
+      .when($"db.dbLastActiveDate" > $"day.LastActiveDate", $"db.dblastActiveTransactionType")
+      .otherwise($"day.lastActiveTransactionType")
+    val appIdsCondition = when($"db.dbappIds".isNull, $"day.appIds")
+      .otherwise(array_union($"db.dbappIds", $"day.appIds"))
+    val pmcIdsCondition = when($"db.dbpmcIds".isNull, $"day.pmcIds")
+      .otherwise(array_union($"db.dbpmcIds", $"day.pmcIds"))
+
+    val dbActivityDF = getDFfromMongo(dayActivityResultDF, "userId", "Activity", dbActivitySchema)
+      .select($"_id", $"FirstActiveDate".as("dbFirstActiveDate"),
+        $"FirstPayDate".as("dbFirstPayDate"),
+        $"LastActiveDate".as("dbLastActiveDate"),
+        $"LastPayDate".as("dbLastPayDate"),
+        $"lastActiveTransactionType".as("dblastActiveTransactionType"),
+        $"lastPayAppId".as("dblastPayAppId"),
+        $"pmcIds".as("dbpmcIds"),
+        $"appIds".as("dbappIds"))
+
+    val inputActivity = dayActivityResultDF.as("day").join(dbActivityDF.as("db"),
+      $"userId" === $"_id", "left").withColumn("pmcIds", pmcIdsCondition)
+      .withColumn("appIds", appIdsCondition)
+      .withColumn("lastActiveTransactionType", lastActiveTransactionTypeCondition)
+      .withColumn("lastPayAppId", lastPayAppIdCondition)
+      .withColumn("LastPayDate", lastPayDateCondition)
+      .withColumn("FirstPayDate", firstPayDateCondition)
+      .withColumn("LastActiveDate", lastActiveCondition)
+      .withColumn("FirstActiveDate", firstActiveCondition)
+      .drop("_id", "dbFirstActiveDate", "dbFirstPayDate", "dbLastActiveDate", "dbLastPayDate", "dblastActiveTransactionType", "dblastPayAppId", "dbpmcIds", "dbappIds")
+    writeDFtoMongo(inputActivity, "userId", "Activity")
 
 
+    // Insert into promotion table
+    val profromdb = getDFfromMongo(dayPromotionResult, "voucherCode", "Promotion", db_promo_schema, true)
+      .select($"_id", $"ValidDate".as("OldValidDate"), $"status".as("OldStatus"))
+
+    val promotionProcessing = dayPromotionResult.as("promotion").join(profromdb.as("dbdata"), $"promotion.voucherCode" === $"dbdata._id", "leftouter")
+    val instantinput = promotionProcessing.withColumn("Input", when($"OldValidDate".isNull, 1)
+      .when($"status" === "USED" and $"OldStatus" === "GIVEN", 1).otherwise(0)).filter($"Input" === 1).drop($"Input")
+      .drop($"_id").drop("OldValidDate").drop("OldStatus")
+
+    writeDFtoMongo(instantinput, "voucherCode", "Promotion")
+
+    spark.close()
   }
 }

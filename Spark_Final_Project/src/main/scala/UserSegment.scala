@@ -170,6 +170,13 @@ object UserSegment {
     val pmcIdsCondition = when($"db.dbpmcIds".isNull, $"day.pmcIds")
       .otherwise(array_union($"db.dbpmcIds", $"day.pmcIds"))
 
+    val dbInputCondition = when($"LastActiveDate" =!= $"dbLastActiveDate",1)
+      .when($"FirstActiveDate" =!= $"dbFirstActiveDate",1 )
+      .when($"LastPayDate"=!= $"dbLastPayDate", 1)
+      .when($"FirstPayDate"=!= $"dbFirstPayDate", 1)
+      .when($"appIds" =!= $"dbappIds", 1)
+      .when($"pmcIds" =!=$"dbpmcIds",1 ).otherwise(0)
+
     val dbActivityDF = getDFfromMongo(spark, dayActivityResultDF, "userId", "Activity", dbActivitySchema)
       .select($"_id", $"FirstActiveDate".as("dbFirstActiveDate"),
         $"FirstPayDate".as("dbFirstPayDate"),
@@ -189,7 +196,9 @@ object UserSegment {
       .withColumn("FirstPayDate", firstPayDateCondition)
       .withColumn("LastActiveDate", lastActiveCondition)
       .withColumn("FirstActiveDate", firstActiveCondition)
-      .drop("_id", "dbFirstActiveDate", "dbFirstPayDate", "dbLastActiveDate", "dbLastPayDate", "dblastActiveTransactionType", "dblastPayAppId", "dbpmcIds", "dbappIds")
+      .withColumn("Input", dbInputCondition)
+      .filter($"Input" === 1)
+      .drop("_id", "dbFirstActiveDate", "dbFirstPayDate", "dbLastActiveDate", "dbLastPayDate", "dblastActiveTransactionType", "dblastPayAppId", "dbpmcIds", "dbappIds", "Input")
     writeDFtoMongo(spark, inputActivity, "userId", "Activity")
 
 

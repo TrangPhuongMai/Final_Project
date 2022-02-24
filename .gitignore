@@ -1,6 +1,5 @@
-/Spark_Final_Project/.bsp/
-/Spark_Final_Project/.idea/
-/Spark_Final_Project/data/datalake/
-/Spark_Final_Project/project/
-/Spark_Final_Project/target/
-*.xml
+.bsp/
+.idea/
+Spark_Final_Project/data/datalake/
+Spark_Final_Project/project/
+target/

@@ -1,11 +1,9 @@
-import com.mongodb.spark.MongoSpark
-import com.mongodb.spark.config.{ReadConfig, WriteConfig}
 import org.apache.log4j._
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types._
 import org.apache.spark.sql.expressions.Window
-import org.bson.Document
+import ult.Schema._
+import ult.MongoDBConnector._
 
 object UserSegment {
   def main(args: Array[String]) {
@@ -22,96 +20,6 @@ object UserSegment {
     import spark.implicits._
 
     val temp_date = "2021-11-02"
-
-    val output_uri_test = "mongodb://localhost:27017/"
-
-    def getDFfromMongo(df: DataFrame, colname: String, collection: String, schema: StructType, isStringType: Boolean = true): DataFrame = {
-      val readConfig = ReadConfig(Map("uri" -> output_uri_test, "database" -> "FAcademy", "collection" -> collection))
-      val pipeline: String = if (isStringType) {
-        val text = df.select(col(colname)).agg(concat_ws("""","""", collect_list(col(colname)))).first().get(0)
-        "{$match: { _id : {$in:[\"" + text + "\"]}}}"
-      }
-      else {
-        val text = df.select(col(colname)).agg(concat_ws(",", collect_list(col(colname)))).first().get(0)
-
-        "{$match: { _id : {$in:[" + text + "]}}}"
-      }
-
-      val rdd = MongoSpark.load(spark.sparkContext, readConfig)
-      val result = rdd.withPipeline(Seq(Document.parse(pipeline))).toDF(schema)
-      return result
-    }
-
-    def writeDFtoMongo(df: DataFrame, primcol: String, collect: String) = {
-      val writeConfig = WriteConfig(Map("uri" -> output_uri_test, "database" -> "FAcademy", "collection" -> collect, "replaceDocument" -> "false"))
-      val df_save = df.withColumnRenamed(primcol, "_id")
-      MongoSpark.save(df_save, writeConfig)
-    }
-
-    // Create schemas
-    val tranTypeSchema = new StructType()
-      .add("trantype", IntegerType, nullable = true)
-      .add("transtypename", StringType, nullable = true)
-
-    val genderSchema = new StructType()
-      .add("gender", IntegerType, nullable = true)
-      .add("genderName", StringType, nullable = true)
-
-    val userSchema = new StructType()
-      .add("userId", IntegerType, nullable = true)
-      .add("birthdate", DateType, nullable = true)
-      .add("profileLevel", IntegerType, nullable = true)
-      .add("gender", IntegerType, nullable = true)
-      .add("updatedTime", TimestampType, nullable = true)
-
-    val promotionSchema = new StructType()
-      .add("customer_id", IntegerType, nullable = true)
-      .add("voucherCode", StringType, nullable = true)
-      .add("status", StringType, nullable = true)
-      .add("campaignID", IntegerType, nullable = true)
-      .add("time", TimestampType, nullable = true)
-
-    val transactionSchema = new StructType()
-      .add("transId", StringType, nullable = true)
-      .add("transStatus", IntegerType, nullable = true)
-      .add("userId", IntegerType, nullable = true)
-      .add("transactionTime", TimestampType, nullable = true)
-      .add("appId", IntegerType, nullable = true)
-      .add("transType", IntegerType, nullable = true)
-      .add("amount", IntegerType, nullable = true)
-      .add("pmcId", IntegerType, nullable = true)
-
-    val campaignSchema = new StructType()
-      .add("campaignID", IntegerType, nullable = true)
-      .add("campaignType", IntegerType, nullable = true)
-      .add("expireDate", TimestampType, nullable = true)
-      .add("expireTime", IntegerType, nullable = true)
-
-    val dbActivitySchema = new StructType()
-      .add("_id", IntegerType, nullable = true)
-      .add("FirstActiveDate", DateType, nullable = true)
-      .add("FirstPayDate", DateType, nullable = true)
-      .add("LastActiveDate", DateType, nullable = true)
-      .add("LastPayDate", DateType, nullable = true)
-      .add("lastActiveTransactionType", IntegerType, nullable = true)
-      .add("lastPayAppId", IntegerType, nullable = true)
-      .add("pmcIds", ArrayType(IntegerType), nullable = true)
-      .add("appIds", ArrayType(IntegerType), nullable = true)
-
-    val dbDemographicSchema = new StructType()
-      .add("_id", IntegerType, nullable = true)
-      .add("age", IntegerType, nullable = true)
-      .add("profileLevel", IntegerType, nullable = true)
-      .add("gender", StringType, nullable = true)
-      .add("updatedTime", TimestampType, nullable = true)
-
-    val db_promo_schema = new StructType()
-      .add("_id", StringType, nullable = true)
-      .add("ValidDate", TimestampType, nullable = true)
-      .add("campaignID", IntegerType, nullable = true)
-      .add("customer_id", IntegerType, nullable = true)
-      .add("status", StringType, nullable = true)
-
 
     // Read data from sources
     val trantypeDF = spark.read
@@ -226,7 +134,7 @@ object UserSegment {
 
     // Insert into demographic table
     val inputDemographicDF = dayUserResult.as("day").join(
-      getDFfromMongo(dayUserResult, "userId", "Demographic", dbDemographicSchema)
+      getDFfromMongo(spark, dayUserResult, "userId", "Demographic", dbDemographicSchema)
         .select("_id", "updatedTime")
         .as("db"),
       $"day.userId" === $"db._id", "left")
@@ -235,7 +143,7 @@ object UserSegment {
       .filter($"input" === 1)
       .drop($"db.updatedTime").drop($"_id").drop("input")
 
-    writeDFtoMongo(inputDemographicDF, "userId", "Demographic")
+    writeDFtoMongo(spark, inputDemographicDF, "userId", "Demographic")
 
     //Insert into activity table
     val firstActiveCondition = when($"db.dbFirstActiveDate".isNull, $"day.FirstActiveDate")
@@ -262,7 +170,7 @@ object UserSegment {
     val pmcIdsCondition = when($"db.dbpmcIds".isNull, $"day.pmcIds")
       .otherwise(array_union($"db.dbpmcIds", $"day.pmcIds"))
 
-    val dbActivityDF = getDFfromMongo(dayActivityResultDF, "userId", "Activity", dbActivitySchema)
+    val dbActivityDF = getDFfromMongo(spark, dayActivityResultDF, "userId", "Activity", dbActivitySchema)
       .select($"_id", $"FirstActiveDate".as("dbFirstActiveDate"),
         $"FirstPayDate".as("dbFirstPayDate"),
         $"LastActiveDate".as("dbLastActiveDate"),
@@ -282,11 +190,11 @@ object UserSegment {
       .withColumn("LastActiveDate", lastActiveCondition)
       .withColumn("FirstActiveDate", firstActiveCondition)
       .drop("_id", "dbFirstActiveDate", "dbFirstPayDate", "dbLastActiveDate", "dbLastPayDate", "dblastActiveTransactionType", "dblastPayAppId", "dbpmcIds", "dbappIds")
-    writeDFtoMongo(inputActivity, "userId", "Activity")
+    writeDFtoMongo(spark, inputActivity, "userId", "Activity")
 
 
     // Insert into promotion table
-    val profromdb = getDFfromMongo(dayPromotionResult, "voucherCode", "Promotion", db_promo_schema, true)
+    val profromdb = getDFfromMongo(spark, dayPromotionResult, "voucherCode", "Promotion", db_promo_schema, true)
       .select($"_id", $"ValidDate".as("OldValidDate"), $"status".as("OldStatus"))
 
     val promotionProcessing = dayPromotionResult.as("promotion").join(profromdb.as("dbdata"), $"promotion.voucherCode" === $"dbdata._id", "leftouter")
@@ -294,7 +202,7 @@ object UserSegment {
       .when($"status" === "USED" and $"OldStatus" === "GIVEN", 1).otherwise(0)).filter($"Input" === 1).drop($"Input")
       .drop($"_id").drop("OldValidDate").drop("OldStatus")
 
-    writeDFtoMongo(instantinput, "voucherCode", "Promotion")
+    writeDFtoMongo(spark, instantinput, "voucherCode", "Promotion")
 
     spark.close()
   }

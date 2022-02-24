@@ -86,6 +86,22 @@ object UserSegment {
       .withColumn("LastPayDate", to_date(lit(temp_date)))
 
 
+    //  CODE test
+
+
+    transWithTypeNameDF
+      .withColumn("FirstActiveDate", to_date(lit(temp_date)))
+      .withColumn("LastActiveDate", to_date(lit(temp_date)))
+      .withColumn("FirstPayDate", when($"transtypename" === "Payment", $"FirstActiveDate").otherwise(null))
+      .withColumn("LastPayDate", when($"transtypename" === "Payment", $"FirstActiveDate").otherwise(null))
+      .groupBy($"userId").agg(first($"FirstActiveDate").as("FirstActiveDate"),
+      first($"LastActiveDate").as("LastActiveDate"), collect_set("appId").as("appIds"),  collect_set("pmcId").as("pmcIds"),
+      min("FirstPayDate").as("FirstPayDate"), max("LastPayDate").as("LastPayDate"))
+      .show()
+
+    // End CodeTest
+
+
     val windowSpec = Window.partitionBy("userId").orderBy(col("transtypename").desc)
 
     val lastTransactionDF = transWithTypeNameDF.withColumn("rank", row_number().over(windowSpec))
@@ -171,9 +187,9 @@ object UserSegment {
       .otherwise(array_union($"db.dbpmcIds", $"day.pmcIds"))
 
     val dbInputCondition = when($"LastActiveDate" =!= $"dbLastActiveDate",1)
-      .when($"FirstActiveDate" =!= $"dbFirstActiveDate",1 )
       .when($"LastPayDate"=!= $"dbLastPayDate", 1)
       .when($"FirstPayDate"=!= $"dbFirstPayDate", 1)
+      .when($"FirstActiveDate" =!= $"dbFirstActiveDate",1 )
       .when($"appIds" =!= $"dbappIds", 1)
       .when($"pmcIds" =!=$"dbpmcIds",1 ).otherwise(0)
 

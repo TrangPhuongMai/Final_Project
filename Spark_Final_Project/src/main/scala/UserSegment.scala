@@ -88,13 +88,13 @@ object UserSegment {
 
     //  CODE test
     val windowlastpayid = Window.partitionBy("userID").orderBy($"transactionTime".desc)
-    transWithTypeNameDF
+    val optimizedactivity = transWithTypeNameDF
       .withColumn("FirstActiveDate", to_date(lit(temp_date)))
       .withColumn("LastActiveDate", to_date(lit(temp_date)))
-      .withColumn("FirstPayDate", when($"transtypename" === "Payment", $"transactionTime").otherwise(null))
-      .withColumn("LastPayDate", when($"transtypename" === "Payment", $"transactionTime").otherwise(null))
-      .withColumn("LastPayAppID", when($"transtypename" === "Payment", first($"pmcId").over(windowlastpayid)).otherwise(null))
-      .withColumn("LastActiveTransactionType", first($"transtypename").over(windowlastpayid))
+      .withColumn("FirstPayDate", when($"transtypename" === "Payment", $"FirstActiveDate").otherwise(null))
+      .withColumn("LastPayDate", when($"transtypename" === "Payment", $"LastActiveDate").otherwise(null))
+      .withColumn("LastPayAppID", when($"transtypename" === "Payment", first($"appId").over(windowlastpayid)).otherwise(null))
+      .withColumn("LastActiveTransactionType", first($"trantype").over(windowlastpayid))
       .groupBy($"userId").agg(first($"FirstActiveDate").as("FirstActiveDate"),
       first($"LastActiveDate").as("LastActiveDate"), collect_set("appId").as("appIds"),  collect_set("pmcId").as("pmcIds"),
       min("FirstPayDate").as("FirstPayDate"), max("LastPayDate").as("LastPayDate")

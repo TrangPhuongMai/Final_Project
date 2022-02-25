@@ -103,7 +103,7 @@ object UserSegment {
     // End CodeTest
 
 
-    val windowSpec = Window.partitionBy("userId").orderBy(col("transtypename").desc)
+    val windowSpec = Window.partitionBy("userId").orderBy(col("transactionTime").desc)
 
     val lastTransactionDF = transWithTypeNameDF.withColumn("rank", row_number().over(windowSpec))
       .filter(col("rank") === 1)

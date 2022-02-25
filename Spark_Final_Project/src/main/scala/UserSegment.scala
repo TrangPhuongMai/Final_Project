@@ -88,8 +88,9 @@ object UserSegment {
       .withColumn("LastPayDate", when($"transtypename" === "Payment", $"LastActiveDate").otherwise(null))
       .withColumn("LastPayAppID", when($"transtypename" === "Payment", first($"appId").over(windowlastpayid)).otherwise(null))
       .withColumn("LastActiveTransactionType", first($"trantype").over(windowlastpayid))
+      .withColumn("paymentPmcIDs", when($"transtypename" === "Payment", $"pmcId").otherwise(null))
       .groupBy($"userId").agg(first($"FirstActiveDate").as("FirstActiveDate"),
-      first($"LastActiveDate").as("LastActiveDate"), collect_set("appId").as("appIds"),  collect_set("pmcId").as("pmcIds"),
+      first($"LastActiveDate").as("LastActiveDate"), collect_set("appId").as("appIds"),  collect_set("paymentPmcIDs").as("pmcIds"),
       first("FirstPayDate", true).as("FirstPayDate"), first("LastPayDate",true).as("LastPayDate")
       , first("LastPayAppID").as("LastPayAppID"), first($"LastActiveTransactionType").as("LastActiveTransactionType")).cache()
 
@@ -134,24 +135,33 @@ object UserSegment {
     val firstActiveCondition = when($"db.dbFirstActiveDate".isNull, $"day.FirstActiveDate")
       .when($"db.dbFirstActiveDate" > $"day.FirstActiveDate", $"day.FirstActiveDate")
       .otherwise($"db.dbFirstActiveDate")
+
     val lastActiveCondition = when($"db.dbLastActiveDate".isNull, $"day.LastActiveDate")
       .when($"db.dbLastActiveDate" < $"day.LastActiveDate", $"day.LastActiveDate")
       .otherwise($"db.dbLastActiveDate")
-    val firstPayDateCondition = when($"db.dbFirstPayDate".isNull or $"day.FirstPayDate".isNull, $"day.FirstPayDate")
+
+    val firstPayDateCondition = when($"db.dbFirstPayDate".isNull, $"day.FirstPayDate")
+      .when($"day.FirstPayDate".isNull, $"db.dbFirstPayDate")
       .when($"db.dbFirstPayDate" > $"day.FirstPayDate", $"day.FirstPayDate")
       .otherwise($"db.dbFirstPayDate")
-    val lastPayDateCondition = when($"db.dbLastPayDate".isNull or $"day.LastPayDate".isNull, $"day.LastPayDate")
+
+    val lastPayDateCondition = when($"db.dbLastPayDate".isNull , $"day.LastPayDate")
+      .when($"day.LastPayDate".isNull, $"db.dbLastPayDate")
       .when($"db.dbLastPayDate" < $"day.LastPayDate", $"day.LastPayDate")
       .otherwise($"db.dbLastPayDate")
     // Prioritize day last pay
-    val lastPayAppIdCondition = when($"db.dbLastActiveDate".isNull or $"day.LastActiveDate".isNull, $"day.lastPayAppId")
-      .when($"db.dbLastActiveDate" > $"day.LastActiveDate", $"db.dblastPayAppId")
+    val lastPayAppIdCondition = when($"db.dbLastPayDate".isNull, $"day.lastPayAppId")
+      .when($"day.LastPayDate".isNull, $"db.dblastPayAppId")
+      .when($"db.dbLastPayDate" > $"day.LastPayDate", $"db.dblastPayAppId")
       .otherwise($"day.lastPayAppId")
-    val lastActiveTransactionTypeCondition = when($"db.dbLastActiveDate".isNull or $"day.LastActiveDate".isNull, $"day.lastActiveTransactionType")
+
+    val lastActiveTransactionTypeCondition = when($"db.dbLastActiveDate".isNull, $"day.lastActiveTransactionType")
       .when($"db.dbLastActiveDate" > $"day.LastActiveDate", $"db.dblastActiveTransactionType")
       .otherwise($"day.lastActiveTransactionType")
+
     val appIdsCondition = when($"db.dbappIds".isNull, $"day.appIds")
       .otherwise(array_union($"db.dbappIds", $"day.appIds"))
+
     val pmcIdsCondition = when($"db.dbpmcIds".isNull, $"day.pmcIds")
       .otherwise(array_union($"db.dbpmcIds", $"day.pmcIds"))
 

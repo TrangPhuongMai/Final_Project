@@ -74,41 +74,26 @@ object UserSegment {
     val successTransDF = transactionDF.filter(col("transStatus") === 1)
     val transWithTypeNameDF = successTransDF.as("trans").join(broadcast(trantypeDF.as("type")),
       col("trans.transType") === col("type.trantype"))
-      .drop("trantype")
-      .cache()
 
-    // Get user activities data
-    val userActiveDF = transWithTypeNameDF.select("userId").distinct()
+
+
+
+
+    //  Get dayActivity
+    val windowlastpayid = Window.partitionBy("userID").orderBy($"transactionTime".desc)
+    val dayActivityResultDF = transWithTypeNameDF
       .withColumn("FirstActiveDate", to_date(lit(temp_date)))
       .withColumn("LastActiveDate", to_date(lit(temp_date)))
-    val userActivePaymentDF = transWithTypeNameDF.filter(col("transtypename") === "Payment").select("userId").distinct()
-      .withColumn("FirstPayDate", to_date(lit(temp_date)))
-      .withColumn("LastPayDate", to_date(lit(temp_date)))
+      .withColumn("FirstPayDate", when($"transtypename" === "Payment", $"FirstActiveDate").otherwise(null))
+      .withColumn("LastPayDate", when($"transtypename" === "Payment", $"LastActiveDate").otherwise(null))
+      .withColumn("LastPayAppID", when($"transtypename" === "Payment", first($"appId").over(windowlastpayid)).otherwise(null))
+      .withColumn("LastActiveTransactionType", first($"trantype").over(windowlastpayid))
+      .groupBy($"userId").agg(first($"FirstActiveDate").as("FirstActiveDate"),
+      first($"LastActiveDate").as("LastActiveDate"), collect_set("appId").as("appIds"),  collect_set("pmcId").as("pmcIds"),
+      first("FirstPayDate", true).as("FirstPayDate"), first("LastPayDate",true).as("LastPayDate")
+      , first("LastPayAppID").as("LastPayAppID"), first($"LastActiveTransactionType").as("LastActiveTransactionType")).cache()
 
-
-    val windowSpec = Window.partitionBy("userId").orderBy(col("transtypename").desc)
-
-    val lastTransactionDF = transWithTypeNameDF.withColumn("rank", row_number().over(windowSpec))
-      .filter(col("rank") === 1)
-      .drop("rank")
-      .select(col("userId"), col("appId").as("lastPayAppId"), col("transType").as("lastActiveTransactionType"))
-
-    val appPmcIdsDF = transWithTypeNameDF.groupBy("userId").agg(collect_set("appId").as("appIds"),
-      collect_set("pmcId").as("pmcIds"))
-
-
-    val activeJointDF = userActiveDF.as("active").join(userActivePaymentDF.as("payment"),
-      col("active.userId") === col("payment.userId"), "left")
-      .drop(col("payment.userId"))
-
-    val lastTranJoint = activeJointDF.as("active").join(lastTransactionDF.as("last"),
-      col("active.userId") === col("last.userId"))
-      .drop(col("last.userId"))
-
-    val dayActivityResultDF = lastTranJoint.as("last").join(appPmcIdsDF.as("appPmc"),
-      col("last.userId") === col("appPmc.userId"))
-      .drop(col("appPmc.userId"))
-      .cache()
+    // End dayActivityResultDF
 
 
     //  Get promotions data
@@ -170,6 +155,13 @@ object UserSegment {
     val pmcIdsCondition = when($"db.dbpmcIds".isNull, $"day.pmcIds")
       .otherwise(array_union($"db.dbpmcIds", $"day.pmcIds"))
 
+    val dbInputCondition = when($"LastActiveDate" =!= $"dbLastActiveDate",1)
+      .when($"LastPayDate"=!= $"dbLastPayDate", 1)
+      .when($"FirstPayDate"=!= $"dbFirstPayDate", 1)
+      .when($"FirstActiveDate" =!= $"dbFirstActiveDate",1 )
+      .when($"appIds" =!= $"dbappIds", 1)
+      .when($"pmcIds" =!=$"dbpmcIds",1 ).otherwise(0)
+
     val dbActivityDF = getDFfromMongo(spark, dayActivityResultDF, "userId", "Activity", dbActivitySchema)
       .select($"_id", $"FirstActiveDate".as("dbFirstActiveDate"),
         $"FirstPayDate".as("dbFirstPayDate"),
@@ -189,7 +181,9 @@ object UserSegment {
       .withColumn("FirstPayDate", firstPayDateCondition)
       .withColumn("LastActiveDate", lastActiveCondition)
       .withColumn("FirstActiveDate", firstActiveCondition)
-      .drop("_id", "dbFirstActiveDate", "dbFirstPayDate", "dbLastActiveDate", "dbLastPayDate", "dblastActiveTransactionType", "dblastPayAppId", "dbpmcIds", "dbappIds")
+      .withColumn("Input", dbInputCondition)
+      .filter($"Input" === 1)
+      .drop("_id", "dbFirstActiveDate", "dbFirstPayDate", "dbLastActiveDate", "dbLastPayDate", "dblastActiveTransactionType", "dblastPayAppId", "dbpmcIds", "dbappIds", "Input")
     writeDFtoMongo(spark, inputActivity, "userId", "Activity")
 
 

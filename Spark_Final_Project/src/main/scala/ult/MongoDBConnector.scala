@@ -2,8 +2,9 @@ package ult
 
 import com.mongodb.spark.MongoSpark
 import com.mongodb.spark.config.{ReadConfig, WriteConfig}
-import org.apache.spark.sql.{DataFrame, SparkSession}
-import org.apache.spark.sql.functions.{col, collect_list, concat_ws}
+import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.{DataFrame, Row, SparkSession}
+import org.apache.spark.sql.functions.{col, collect_list, concat_ws, row_number}
 import org.apache.spark.sql.types.StructType
 import org.bson.Document
 
@@ -31,5 +32,24 @@ object MongoDBConnector {
     val writeConfig = WriteConfig(Map("uri" -> output_uri_test, "database" -> "FAcademy", "collection" -> collect, "replaceDocument" -> "false"))
     val df_save = df.withColumnRenamed(primcol, "_id")
     MongoSpark.save(df_save, writeConfig)
+  }
+
+  def getDFbyBatch(spark: SparkSession, df:DataFrame, colName: String, collection: String,  schemain: StructType, isStringtype: Boolean = false, batch_size: Int = 1000 ): DataFrame ={
+    val w = Window.orderBy(colName)
+    var lowerbound = 1
+    var upperbound = batch_size
+    val wantedcol = df.select(colName).withColumn("idx", row_number().over(w)).cache()
+    var dummydf = spark.createDataFrame(spark.sparkContext
+      .emptyRDD[Row], schemain)
+    val totalrow = wantedcol.count()
+    while( lowerbound <= totalrow){
+      val takefrom = wantedcol.filter(col("idx").between(lowerbound,upperbound)).select(colName)
+      dummydf = dummydf.unionAll(getDFfromMongo(spark, takefrom,colName, collection, schemain, isStringtype))
+      lowerbound += batch_size
+      upperbound += batch_size
+    }
+
+    return dummydf
+
   }
 }

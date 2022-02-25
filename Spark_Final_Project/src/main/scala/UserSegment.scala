@@ -74,21 +74,14 @@ object UserSegment {
     val successTransDF = transactionDF.filter(col("transStatus") === 1)
     val transWithTypeNameDF = successTransDF.as("trans").join(broadcast(trantypeDF.as("type")),
       col("trans.transType") === col("type.trantype"))
-      .drop("trantype")
-      .cache()
-
-    // Get user activities data
-    val userActiveDF = transWithTypeNameDF.select("userId").distinct()
-      .withColumn("FirstActiveDate", to_date(lit(temp_date)))
-      .withColumn("LastActiveDate", to_date(lit(temp_date)))
-    val userActivePaymentDF = transWithTypeNameDF.filter(col("transtypename") === "Payment").select("userId").distinct()
-      .withColumn("FirstPayDate", to_date(lit(temp_date)))
-      .withColumn("LastPayDate", to_date(lit(temp_date)))
 
 
-    //  CODE test
+
+
+
+    //  Get dayActivity
     val windowlastpayid = Window.partitionBy("userID").orderBy($"transactionTime".desc)
-    val optimizedactivity = transWithTypeNameDF
+    val dayActivityResultDF = transWithTypeNameDF
       .withColumn("FirstActiveDate", to_date(lit(temp_date)))
       .withColumn("LastActiveDate", to_date(lit(temp_date)))
       .withColumn("FirstPayDate", when($"transtypename" === "Payment", $"FirstActiveDate").otherwise(null))
@@ -97,35 +90,10 @@ object UserSegment {
       .withColumn("LastActiveTransactionType", first($"trantype").over(windowlastpayid))
       .groupBy($"userId").agg(first($"FirstActiveDate").as("FirstActiveDate"),
       first($"LastActiveDate").as("LastActiveDate"), collect_set("appId").as("appIds"),  collect_set("pmcId").as("pmcIds"),
-      min("FirstPayDate").as("FirstPayDate"), max("LastPayDate").as("LastPayDate")
-      , first("LastPayAppID"), first($"LastActiveTransactionType"))
+      first("FirstPayDate", true).as("FirstPayDate"), first("LastPayDate",true).as("LastPayDate")
+      , first("LastPayAppID").as("LastPayAppID"), first($"LastActiveTransactionType").as("LastActiveTransactionType")).cache()
 
-    // End CodeTest
-
-
-    val windowSpec = Window.partitionBy("userId").orderBy(col("transactionTime").desc)
-
-    val lastTransactionDF = transWithTypeNameDF.withColumn("rank", row_number().over(windowSpec))
-      .filter(col("rank") === 1)
-      .drop("rank")
-      .select(col("userId"), col("appId").as("lastPayAppId"), col("transType").as("lastActiveTransactionType"))
-
-    val appPmcIdsDF = transWithTypeNameDF.groupBy("userId").agg(collect_set("appId").as("appIds"),
-      collect_set("pmcId").as("pmcIds"))
-
-
-    val activeJointDF = userActiveDF.as("active").join(userActivePaymentDF.as("payment"),
-      col("active.userId") === col("payment.userId"), "left")
-      .drop(col("payment.userId"))
-
-    val lastTranJoint = activeJointDF.as("active").join(lastTransactionDF.as("last"),
-      col("active.userId") === col("last.userId"))
-      .drop(col("last.userId"))
-
-    val dayActivityResultDF = lastTranJoint.as("last").join(appPmcIdsDF.as("appPmc"),
-      col("last.userId") === col("appPmc.userId"))
-      .drop(col("appPmc.userId"))
-      .cache()
+    // End dayActivityResultDF
 
 
     //  Get promotions data

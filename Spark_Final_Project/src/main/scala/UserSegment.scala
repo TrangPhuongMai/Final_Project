@@ -165,7 +165,10 @@ object UserSegment {
     val pmcIdsCondition = when($"db.dbpmcIds".isNull, $"day.pmcIds")
       .otherwise(array_union($"db.dbpmcIds", $"day.pmcIds"))
 
-    val dbInputCondition = when($"LastActiveDate" =!= $"dbLastActiveDate",1)
+
+    // Kiểm tra lại thật kĩ phần này
+    val dbInputCondition = when($"_id".isNull, 1)
+      .when($"LastActiveDate" =!= $"dbLastActiveDate",1)
       .when($"LastPayDate"=!= $"dbLastPayDate", 1)
       .when($"FirstPayDate"=!= $"dbFirstPayDate", 1)
       .when($"FirstActiveDate" =!= $"dbFirstActiveDate",1 )

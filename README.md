@@ -23,7 +23,7 @@ Overall, the processes will utilize Spark's distributed processing capabilities 
 
 <a id='architecture'></a>
 ## 2. Architecture
-![architecture-img](https://www.dropbox.com/s/rrwgknoq8r1uddy/FinalProjectDesign-Architecture_Design.jpeg?dl=0)
+![FinalProjectDesign-Architecture_Design](https://user-images.githubusercontent.com/78945505/155892212-ff5400b1-4043-4e35-bb2a-d5bfaee6da3e.jpeg)
 
 The system will be scheduled to run on a daily basis, daily logs produced by other applications will be stored and picked up by spark and save to the data lake. The process continues with transforming data to the required format. The transformed data will then be put in the data warehouse. 
 
@@ -89,6 +89,7 @@ Software required to run the project:
 
 
 ```scala
+
 
 
 ```

@@ -8,7 +8,7 @@
 - [Prequesties](#prequesties)
 - [Usage](#usage)
 - [More Documents](#doc)
-- [Contributors](#contributors
+- [Contributors](#contributors)
 ***
 
 

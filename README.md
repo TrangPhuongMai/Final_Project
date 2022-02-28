@@ -7,15 +7,15 @@
 - [Project Components](#components)
 - [Prequesties](#prequesties)
 - [Usage](#usage)
-- [Glossary](#glossary)
-- [Contributing](#contributing)
+- [More Documents](#doc)
+- [Contributors](#contributors
 ***
 
 
 <a id='overview'></a>
 ## 1. Project Overview
 Rapid development and expansion of the business segment inside company A have led to a fiercer requirement for having an ETL data pipeline that can be automated, robust, and capable of handling/preprocessing a large volume of data. 
-Acknowledging those requirements, this project aims to build a sample data pipeline for a Marketing department that satisfies all the above requirements and is capable of returning results that match the specific demand of this business unit ([more]()). 
+Acknowledging those requirements, this project aims to build a sample data pipeline for a Marketing department that satisfies all the above requirements and is capable of returning results that match the specific demand of this business unit ([more](https://docs.google.com/spreadsheets/d/10420ZdVqh9tX8HHfqCQbzv6Rer4oypdxQ7RoEpgTo7A/edit?usp=sharing)). 
 
 The project overall can be separated into three main parts Collect data from local database and save to datalake, Transformation data, and Load the processed data to the database.
 Overall, the processes will utilize Spark's distributed processing capabilities as the main pipeline, MongoDB as the main Storage Database for its simplicity and support for distributed, data replication, and Airflow - scheduler for simplicity. 
@@ -53,7 +53,7 @@ This project use Spark as the framework for handling the ETL
 #### Consideration
 + Capable of handling large data files
 + Provide correct transformation
-+ Capable of handling scenarios and test ([more info]())
++ Capable of handling scenarios and test ([more info](https://docs.google.com/spreadsheets/d/10420ZdVqh9tX8HHfqCQbzv6Rer4oypdxQ7RoEpgTo7A/edit#gid=506345512))
 
 #### Files:
 + File UserSegment: All code to read/ transform and load file
@@ -77,10 +77,10 @@ Transformed data are stored in MongoDB
 <a id='prequesties'></a>
 ## 4 Prequesties 
 Software required to run the project:
-+ [Docker]()
-+ [Scala with Spark]()
-+ [MongoDB]()
-+ [Airflow]()
++ [Docker](https://www.docker.com)
++ [Scala with Spark](https://spark.apache.org/docs/latest/quick-start.html)
++ [MongoDB](https://www.mongodb.com/try/download/community)
++ [Airflow](https://airflow.apache.org/docs/apache-airflow/stable/start/index.html)
 + [Docker-compose]()
 
 
@@ -95,16 +95,16 @@ Software required to run the project:
 ```
 
 
-<a id='glossary'></a>
-## 6 Glossary 
+<a id='doc'></a>
+## 6 More Documents 
 In this sections, additional information related to the project will be provided
-+ Clarifying the Input and Output requirements <[link]()>
-+ Graphs in this readme and ERD for Input - Output <[link]()>
-+ More about the approach <[link]()>
-+ List of scenarios and Testing methods <[link]()>
++ Clarifying the Input and Output requirements <[link](https://docs.google.com/spreadsheets/d/10420ZdVqh9tX8HHfqCQbzv6Rer4oypdxQ7RoEpgTo7A/edit?usp=sharing)>
++ Graphs in this readme and ERD for Input - Output <[link](https://docs.google.com/document/d/1xtGPNm6DT3w5G9XtnOmor3aAYaLFFzOrUl16pz5kzL8/edit?usp=sharing)>
++ More about the approach <[link](https://docs.google.com/document/d/1xtGPNm6DT3w5G9XtnOmor3aAYaLFFzOrUl16pz5kzL8/edit?usp=sharing)>
++ List of scenarios and Testing methods <[link](https://docs.google.com/spreadsheets/d/10420ZdVqh9tX8HHfqCQbzv6Rer4oypdxQ7RoEpgTo7A/edit?usp=sharing)>
 
-<a id='contributing'></a>
-## 7 Contributing
+<a id='contributors'></a>
+## 7 Contributiors
 Member of the team:
 1. KhaiT1 -  Team Leader
 2. DucNM64 - Team Member

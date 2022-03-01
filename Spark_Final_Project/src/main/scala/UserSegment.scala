@@ -32,17 +32,17 @@ object UserSegment {
       .schema(genderSchema)
       .csv("data/source/mapping/gender.csv")
 
-    val userDF = spark.read
+    val userDFSource = spark.read
       .option("header", "true").option("delimiter", "\t")
       .schema(userSchema)
       .csv("data/source/users/" + temp_date)
 
-    val promotionDF = spark.read
+    val promotionDFSource = spark.read
       .option("header", "true").option("delimiter", "\t")
       .schema(promotionSchema)
       .csv("data/source/promotions/" + temp_date)
 
-    val transactionDF = spark.read
+    val transactionDFSource = spark.read
       .option("header", "true").option("delimiter", "\t")
       .schema(transactionSchema)
       .csv("data/source/transactions/" + temp_date)
@@ -53,10 +53,14 @@ object UserSegment {
       .csv("data/source/configs/campaign.csv")
 
     // Write data to datalake
-    userDF.write.mode(SaveMode.Overwrite).parquet("data/datalake/users/" + temp_date)
-    promotionDF.write.mode(SaveMode.Overwrite).parquet("data/datalake/promotions/" + temp_date)
-    transactionDF.write.mode(SaveMode.Overwrite).parquet("data/datalake/transactions/" + temp_date)
+    userDFSource.write.mode(SaveMode.Overwrite).parquet("data/datalake/users/" + temp_date)
+    promotionDFSource.write.mode(SaveMode.Overwrite).parquet("data/datalake/promotions/" + temp_date)
+    transactionDFSource.write.mode(SaveMode.Overwrite).parquet("data/datalake/transactions/" + temp_date)
 
+
+    val userDF = spark.read.parquet("data/datalake/users/" + temp_date)
+    val promotionDF = spark.read.parquet("data/datalake/promotions/" + temp_date)
+    val transactionDF = spark.read.parquet("data/datalake/transactions/" + temp_date)
     // TRANSFORM DATA
     // Get last updated demographic infomation of the day
     val userWindowSpec = Window.partitionBy("userId").orderBy(col("updatedTime").desc)

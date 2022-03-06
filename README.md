@@ -36,7 +36,7 @@ To simplify and minimize the effort in setting up systems, the project used loca
 <a id='components'></a>
 ## 3. Specific Components
 ### 3.1 Airflow: Scheduler
-Responsible for the daily dag run and manage dags execution ([more info(https://docs.google.com/document/d/1xtGPNm6DT3w5G9XtnOmor3aAYaLFFzOrUl16pz5kzL8/edit#heading=h.60wywg1ru8mi)). 
+Responsible for the daily dag run and manage dags execution ([more info](https://docs.google.com/document/d/1xtGPNm6DT3w5G9XtnOmor3aAYaLFFzOrUl16pz5kzL8/edit#heading=h.60wywg1ru8mi)). 
 
 #### Main Tasks
 + Trigger Spark App Daily

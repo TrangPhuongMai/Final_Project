@@ -23,7 +23,8 @@ Overall, the processes will utilize Spark's distributed processing capabilities 
 
 <a id='architecture'></a>
 ## 2. Architecture
-![FinalProjectDesign-Architecture_Design](https://user-images.githubusercontent.com/78945505/155892212-ff5400b1-4043-4e35-bb2a-d5bfaee6da3e.jpeg)
+
+![FinalProjectDesign-Architecture_Design](https://user-images.githubusercontent.com/78945505/156932053-339dd57b-ce7c-4769-8e76-a631580de33d.jpg)
 
 The system will be scheduled to run on a daily basis, daily logs produced by other applications will be stored and picked up by spark and save to the data lake. The process continues with transforming data to the required format. The transformed data will then be put in the data warehouse. 
 
@@ -35,13 +36,13 @@ To simplify and minimize the effort in setting up systems, the project used loca
 <a id='components'></a>
 ## 3. Specific Components
 ### 3.1 Airflow: Scheduler
-Responsible for the daily dag run and manage all the. ..
+Responsible for the daily dag run and manage dags execution ([more info(https://docs.google.com/document/d/1xtGPNm6DT3w5G9XtnOmor3aAYaLFFzOrUl16pz5kzL8/edit#heading=h.60wywg1ru8mi)). 
 
 #### Main Tasks
-+ 
++ Trigger Spark App Daily
++ Provide date variable for Spark to save and write data to correct directory
 #### Consideration
-+
-
++ Capable of providing execution date variable or any date variable that user want to run.
 ### 3.2 Spark: Main framework for data pipeline 
 This project use Spark as the framework for handling the ETL 
 #### Main Tasks:
@@ -81,7 +82,6 @@ Software required to run the project:
 + [Scala with Spark](https://spark.apache.org/docs/latest/quick-start.html)
 + [MongoDB](https://www.mongodb.com/try/download/community)
 + [Airflow](https://airflow.apache.org/docs/apache-airflow/stable/start/index.html)
-+ [Docker-compose]()
 
 
 <a id='usage'></a>

@@ -1,4 +1,4 @@
-# Final_Project - Data Pipeline - Team 3
+# Final_Project - Data Pipeline - Team 2
 
 ## Table of Contents
 

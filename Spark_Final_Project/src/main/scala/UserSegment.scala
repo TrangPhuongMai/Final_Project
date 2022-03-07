@@ -19,7 +19,7 @@ object UserSegment {
 
     import spark.implicits._
 
-    val temp_date = "2021-11-02"
+    val temp_date = if (args.length > 0) args(0) else "2021-11-01"
 
     // Read data from sources
     val trantypeDF = spark.read

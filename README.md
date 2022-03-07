@@ -41,8 +41,11 @@ Responsible for the daily dag run and manage dags execution ([more info](https:/
 #### Main Tasks
 + Trigger Spark App Daily
 + Provide date variable for Spark to save and write data to correct directory
-#### Consideration
 + Capable of providing execution date variable or any date variable that user want to run.
+#### Consideration
++ Capable of run in larger cluster with the help os Yarn
++ Optimize the systems 
+
 ### 3.2 Spark: Main framework for data pipeline 
 This project use Spark as the framework for handling the ETL 
 #### Main Tasks:
